@@ -5,52 +5,55 @@ export interface Product {
   id?: number;
   name: string;
   price: number;
-  category: string;     
-  image?: string;       // Aquí guardaremos la FOTO en base64
+  category: string;
+  unit: string;
+  image?: string;
   stock: number;
+}
+
+export interface CartItem extends Product {
+  quantity: number;
 }
 
 export interface Sale {
   id?: number;
   date: Date;
   total: number;
-  items: Product[];
+  items: CartItem[];
 }
 
-// NUEVAS INTERFACES PARA CONFIGURACIÓN DINÁMICA
-export interface Category {
-  id?: number;
+export interface Category { id?: number; name: string; }
+export interface Seller { id?: number; name: string; }
+export interface Unit { id?: number; name: string; }
+
+// --- NUEVA INTERFAZ PARA DATOS DEL NEGOCIO ---
+export interface BusinessConfig {
+  id?: number; // Siempre será 1
   name: string;
+  ruc: string;
+  address: string;
+  phone: string;
 }
 
-export interface Seller {
-  id?: number;
-  name: string;
-}
-
-// --- CLASE BASE DE DATOS ---
 class PosDatabase extends Dexie {
   products!: Table<Product>;
   sales!: Table<Sale>;
-  categories!: Table<Category>; // Tabla nueva
-  sellers!: Table<Seller>;      // Tabla nueva
+  categories!: Table<Category>;
+  sellers!: Table<Seller>;
+  units!: Table<Unit>;
+  config!: Table<BusinessConfig>; // --- NUEVA TABLA ---
 
   constructor() {
     super('PosCaneteDB'); 
     
-    // VERSIÓN 1 (La que tenías antes)
-    this.version(1).stores({
-      products: '++id, name, category, stock', 
-      sales: '++id, date'
-    });
-
-    // VERSIÓN 2 (ACTUALIZACIÓN: Agregamos categorías y vendedores)
-    // Dexie es inteligente y mantendrá tus productos antiguos a salvo.
-    this.version(2).stores({
-      products: '++id, name, category, stock', 
+    // VERSIÓN 5: Agregamos CONFIG
+    this.version(5).stores({
+      products: '++id, name, category, stock, unit', 
       sales: '++id, date',
-      categories: '++id, name', // Nueva
-      sellers: '++id, name'     // Nueva
+      categories: '++id, name',
+      sellers: '++id, name',
+      units: '++id, name',
+      config: '++id' // Nueva tabla simple
     });
   }
 }
