@@ -1,38 +1,58 @@
 import Dexie, { Table } from 'dexie';
 
-// 1. Definimos la forma de nuestros datos (Interfaces)
+// --- INTERFACES ---
 export interface Product {
-  id?: number;          
+  id?: number;
   name: string;
   price: number;
   category: string;     
-  image?: string;       // ¡MANTENEMOS ESTO! (Es útil para el futuro)
-  stock: number;        // <--- NUEVO: Aquí guardaremos la cantidad (ej: 50)
+  image?: string;       // Aquí guardaremos la FOTO en base64
+  stock: number;
 }
 
 export interface Sale {
   id?: number;
   date: Date;
   total: number;
-  items: Product[];     // Cambié 'any[]' por 'Product[]' para que sea más seguro
+  items: Product[];
 }
 
-// 2. Creamos la Clase de la Base de Datos
+// NUEVAS INTERFACES PARA CONFIGURACIÓN DINÁMICA
+export interface Category {
+  id?: number;
+  name: string;
+}
+
+export interface Seller {
+  id?: number;
+  name: string;
+}
+
+// --- CLASE BASE DE DATOS ---
 class PosDatabase extends Dexie {
   products!: Table<Product>;
   sales!: Table<Sale>;
+  categories!: Table<Category>; // Tabla nueva
+  sellers!: Table<Seller>;      // Tabla nueva
 
   constructor() {
     super('PosCaneteDB'); 
     
-    // 3. ACTUALIZACIÓN DE LA ESTRUCTURA
-    // Agregamos ', stock' al final para poder buscar productos por cantidad
+    // VERSIÓN 1 (La que tenías antes)
     this.version(1).stores({
-      products: '++id, name, category, stock', // <--- AGREGADO AQUÍ
+      products: '++id, name, category, stock', 
       sales: '++id, date'
+    });
+
+    // VERSIÓN 2 (ACTUALIZACIÓN: Agregamos categorías y vendedores)
+    // Dexie es inteligente y mantendrá tus productos antiguos a salvo.
+    this.version(2).stores({
+      products: '++id, name, category, stock', 
+      sales: '++id, date',
+      categories: '++id, name', // Nueva
+      sellers: '++id, name'     // Nueva
     });
   }
 }
 
-// 3. Exportamos la instancia lista para usar
 export const db = new PosDatabase();
