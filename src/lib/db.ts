@@ -2,18 +2,19 @@ import Dexie, { Table } from 'dexie';
 
 // 1. Definimos la forma de nuestros datos (Interfaces)
 export interface Product {
-  id?: number;          // El ? significa que es opcional al crearlo (se autogenera)
+  id?: number;          
   name: string;
   price: number;
-  category: string;     // 'Abarrotes', 'Bebidas', etc.
-  image?: string;       // URL de la foto o emoji
+  category: string;     
+  image?: string;       // ¡MANTENEMOS ESTO! (Es útil para el futuro)
+  stock: number;        // <--- NUEVO: Aquí guardaremos la cantidad (ej: 50)
 }
 
 export interface Sale {
   id?: number;
   date: Date;
   total: number;
-  items: any[];         // Aquí guardaremos la lista de lo que compró
+  items: Product[];     // Cambié 'any[]' por 'Product[]' para que sea más seguro
 }
 
 // 2. Creamos la Clase de la Base de Datos
@@ -22,11 +23,12 @@ class PosDatabase extends Dexie {
   sales!: Table<Sale>;
 
   constructor() {
-    super('PosCaneteDB'); // Nombre de la BD en el navegador
+    super('PosCaneteDB'); 
     
-    // Definimos las tablas y qué campos son buscables (índices)
+    // 3. ACTUALIZACIÓN DE LA ESTRUCTURA
+    // Agregamos ', stock' al final para poder buscar productos por cantidad
     this.version(1).stores({
-      products: '++id, name, category', // ++id significa autoincremental
+      products: '++id, name, category, stock', // <--- AGREGADO AQUÍ
       sales: '++id, date'
     });
   }
