@@ -1,29 +1,43 @@
 "use client";
 
-import { db, Product, CartItem, Category, Seller, BusinessConfig } from "../lib/db";
+import { db, Product, CartItem, Category, User, BusinessConfig } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState, useRef, useEffect } from "react";
-import { ShoppingCart, Trash2, Banknote, User, FileText, Lock, ShoppingBag, Store, LogOut, AlertTriangle, Image as ImageIcon, CheckCircle, Share2, Download, X } from "lucide-react";
+import { ShoppingCart, Trash2, Banknote, User as UserIcon, FileText, Lock, ShoppingBag, Store, LogOut, AlertTriangle, Image as ImageIcon, CheckCircle, Share2, Download, X } from "lucide-react";
 import html2canvas from "html2canvas";
 import QRCode from "qrcode"; 
 import ResumenDia from "../components/resumenDia";
 import { useRouter } from "next/navigation";
 
-// Interface para el ticket
-interface TicketData {
-    items: CartItem[];
-    total: number;
-    docType: "BOLETA" | "FACTURA";
-    docNum: string;
-    date: Date;
-    vendor: string;
-    clientRuc?: string;
-    qr: string;
-    // Datos del negocio en el momento de la venta
-    businessName: string;
-    businessAddress: string;
-    businessRuc: string;
-}
+// ============================================================================
+// 📍 ZONA DE CLIENTES (TU CONTROL DE LICENCIAS)
+// ============================================================================
+// Aquí agregas manualmente a los negocios que te compran el sistema.
+// CLAVE: Es lo que usan para entrar al POS (Abrir Tienda).
+// PIN_MASTER: Es la clave para entrar a ADMIN (Configuración).
+
+const CLIENTES_AUTORIZADOS: Record<string, { nombre: string, ruc: string, direccion: string, pinMaster: string }> = {
+    // TÚ (ACCESO SUPER ADMIN)
+    "2026": { 
+        nombre: "INVERSIONES CIELO Y DYLAN", 
+        ruc: "20602953638", 
+        direccion: "Imperial, Cañete", 
+        pinMaster: "1234" // Tu clave de admin
+    },
+
+    // CLIENTE EJEMPLO 1 (BODEGA JUAN)
+    "COMERCIAL CYD": { 
+        nombre: "COMERCIAL CIELO Y DYLAN", 
+        ruc: "10456789123", 
+        direccion: "MERCADO CHOCOS - CAÑETE", 
+        pinMaster: "5555" // Clave admin de Juan
+    },
+
+    // CLIENTE EJEMPLO 2 (FARMACIA)
+};
+// ============================================================================
+
+interface TicketData { items: CartItem[]; total: number; docType: "BOLETA" | "FACTURA"; docNum: string; date: Date; vendor: string; clientRuc?: string; qr: string; businessName: string; businessAddress: string; businessRuc: string; }
 
 export default function POS() {
   const router = useRouter();
@@ -33,21 +47,14 @@ export default function POS() {
   const [inputClaveTienda, setInputClaveTienda] = useState("");
   const [errorLogin, setErrorLogin] = useState("");
   
-  // --- LEER CONFIGURACIÓN DE LA BASE DE DATOS ---
-  // Aquí es donde el POS busca el nombre "ELSA E.I.R.L" que guardaste
-  const configDB = useLiveQuery(() => db.config.get(1)); 
-  const [negocioActual, setNegocioActual] = useState<BusinessConfig>({ name: "CARGANDO...", ruc: "---", address: "...", phone: "" });
-
-  useEffect(() => {
-      if (configDB) {
-          setNegocioActual(configDB);
-      }
-  }, [configDB]);
+  // Estado para saber QUÉ cliente está logueado actualmente
+  const [licenciaActiva, setLicenciaActiva] = useState<string | null>(null);
 
   // --- DATOS BD ---
   const productos = useLiveQuery(() => db.products.toArray());
   const categoriasDB = useLiveQuery(() => db.categories.toArray());
-  const vendedoresDB = useLiveQuery(() => db.sellers.toArray());
+  const vendedoresDB = useLiveQuery(() => db.users.toArray()); // Leemos usuarios de la BD (empleados)
+  const configDB = useLiveQuery(() => db.config.get(1));
 
   // --- ESTADOS POS ---
   const [carrito, setCarrito] = useState<CartItem[]>([]);
@@ -56,48 +63,99 @@ export default function POS() {
   const [tipoDoc, setTipoDoc] = useState<"BOLETA" | "FACTURA">("BOLETA");
   const [vendedorId, setVendedorId] = useState(""); 
   const [clienteRuc, setClienteRuc] = useState("");
-  
   const [ticketData, setTicketData] = useState<TicketData | null>(null); 
   const [mostrarModal, setMostrarModal] = useState(false);
-
   const ticketRef = useRef<HTMLDivElement>(null);
+  
   const totalCalculado = carrito.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  // --- MEMORIA DE SESIÓN ---
+  // --- 1. VERIFICAR SI YA ESTABA LOGUEADO (Persistencia) ---
   useEffect(() => {
-    const sesionActiva = sessionStorage.getItem("POS_SESION_ACTIVA");
-    if (sesionActiva === "true") {
+    const licenciaGuardada = sessionStorage.getItem("POS_LICENCIA_ACTIVA");
+    if (licenciaGuardada && CLIENTES_AUTORIZADOS[licenciaGuardada]) {
+        setLicenciaActiva(licenciaGuardada);
         setAccesoConcedido(true);
+        // Sincronizar datos del negocio en la BD si es la primera vez
+        sincronizarDatosNegocio(licenciaGuardada);
     }
   }, []);
+
+  // Función para autollenar la info del negocio en la base de datos local del cliente
+  const sincronizarDatosNegocio = async (licencia: string) => {
+      const datosMaestros = CLIENTES_AUTORIZADOS[licencia];
+      const configActual = await db.config.get(1);
+      
+      // Si la BD está vacía o tiene el nombre por defecto, le ponemos los datos de tu licencia
+      if (!configActual || configActual.name === "SIN CONFIGURAR") {
+          await db.config.put({
+              id: 1,
+              name: datosMaestros.nombre,
+              ruc: datosMaestros.ruc,
+              address: datosMaestros.direccion,
+              phone: ""
+          });
+      }
+  };
 
   useEffect(() => {
       if (vendedoresDB && vendedoresDB.length > 0 && !vendedorId) setVendedorId(vendedoresDB[0].name);
   }, [vendedoresDB]);
 
-  // LOGIN GENÉRICO
+  // --- 2. LOGIN MAESTRO (Tu Control) ---
   const intentarLogin = (e: React.FormEvent) => {
       e.preventDefault();
-      // CLAVE MAESTRA: 2026
-      if (inputClaveTienda === "2026") {
-          sessionStorage.setItem("POS_SESION_ACTIVA", "true");
+      
+      // Buscamos si la clave ingresada existe en tu lista de clientes
+      const clienteEncontrado = CLIENTES_AUTORIZADOS[inputClaveTienda];
+
+      if (clienteEncontrado) {
+          sessionStorage.setItem("POS_LICENCIA_ACTIVA", inputClaveTienda);
+          setLicenciaActiva(inputClaveTienda);
           setAccesoConcedido(true);
+          sincronizarDatosNegocio(inputClaveTienda);
+          setErrorLogin("");
       } else {
-          setErrorLogin("⛔ Clave incorrecta");
+          setErrorLogin("⛔ Licencia no válida o expirada");
       }
   };
 
-  const cerrarSesion = () => { if(confirm("¿Cerrar turno?")) { sessionStorage.clear(); setAccesoConcedido(false); setInputClaveTienda(""); } };
+  const cerrarSesion = () => { 
+      if(confirm("¿Cerrar turno y salir?")) { 
+          sessionStorage.clear(); 
+          setAccesoConcedido(false); 
+          setInputClaveTienda(""); 
+          setLicenciaActiva(null);
+      } 
+  };
   
+  // --- 3. SEGURIDAD ADMIN (PIN Específico del Cliente) ---
   const irASeccionProtegida = (ruta: string) => {
+    // Si ya puso el PIN hace poco, entra directo
     const token = sessionStorage.getItem("POS_ADMIN_TOKEN");
     if (token && (Date.now() - parseInt(token) < 300000)) { router.push(ruta); return; }
-    const pin = prompt("🔒 PIN Admin (Default: 1234):");
-    if (pin === "1234") { sessionStorage.setItem("POS_ADMIN_TOKEN", Date.now().toString()); router.push(ruta); }
-    else if (pin !== null) alert("⛔ Incorrecto");
+
+    const pinIngresado = prompt("🔒 Ingrese PIN de Administrador:");
+    if (!licenciaActiva) return;
+
+    // VALIDACIÓN DOBLE:
+    // 1. O es el PIN MAESTRO que tú le diste en el código.
+    // 2. O es un usuario con rol "ADMIN" creado en la base de datos local.
+    
+    const esPinMaestro = pinIngresado === CLIENTES_AUTORIZADOS[licenciaActiva].pinMaster;
+    
+    // (Opcional) Verificar si es un empleado Admin local (si quisieras permitir empleados admin)
+    // const esAdminLocal = vendedoresDB?.some(u => u.pin === pinIngresado && u.role === "ADMIN");
+
+    if (esPinMaestro) { 
+        sessionStorage.setItem("POS_ADMIN_TOKEN", Date.now().toString()); 
+        router.push(ruta); 
+    }
+    else if (pinIngresado !== null) {
+        alert("⛔ PIN Incorrecto");
+    }
   };
 
-  // --- LÓGICA CARRITO ---
+  // ... (Funciones Carrito, Stock, etc. IGUALES) ...
   const agregarAlCarrito = (producto: Product) => { const existente = carrito.find(item => item.id === producto.id); if (existente) { setCarrito(carrito.map(item => item.id === producto.id ? { ...item, quantity: item.quantity + 1 } : item)); } else { setCarrito([...carrito, { ...producto, quantity: 1 }]); } };
   const cambiarCantidad = (index: number, nuevaCant: string) => { const cantidadNumerica = parseFloat(nuevaCant); if (cantidadNumerica >= 0) { const nuevoCarrito = [...carrito]; nuevoCarrito[index].quantity = cantidadNumerica; setCarrito(nuevoCarrito); } };
   const eliminarDelCarrito = (index: number) => { setCarrito(carrito.filter((_, i) => i !== index)); };
@@ -118,7 +176,14 @@ export default function POS() {
       await db.sales.add({ date: fecha, total: totalCalculado, items: carrito });
       await descontarStock();
       
-      const qrRaw = `${negocioActual.ruc}|${tipoDoc}|${totalCalculado.toFixed(2)}|${fecha.toLocaleDateString()}`;
+      // Usamos datos de la BD o fallback a la licencia maestra
+      const datosTicket = configDB || { 
+          name: CLIENTES_AUTORIZADOS[licenciaActiva!].nombre, 
+          ruc: CLIENTES_AUTORIZADOS[licenciaActiva!].ruc, 
+          address: CLIENTES_AUTORIZADOS[licenciaActiva!].direccion 
+      };
+
+      const qrRaw = `${datosTicket.ruc}|${tipoDoc}|${totalCalculado.toFixed(2)}|${fecha.toLocaleDateString()}`;
       const qrUrl = await QRCode.toDataURL(qrRaw, { width: 100, margin: 1 });
 
       const dataFinal: TicketData = {
@@ -130,9 +195,9 @@ export default function POS() {
           vendor: vendedorId,
           clientRuc: clienteRuc,
           qr: qrUrl,
-          businessName: negocioActual.name,     // USA EL NOMBRE DE LA BD
-          businessAddress: negocioActual.address,
-          businessRuc: negocioActual.ruc
+          businessName: datosTicket.name,
+          businessAddress: datosTicket.address,
+          businessRuc: datosTicket.ruc
       };
 
       setTicketData(dataFinal);
@@ -145,7 +210,6 @@ export default function POS() {
 
   const descargarImagen = async () => { if (!ticketRef.current || !ticketData) { alert("Error ticket."); return; } await new Promise(resolve => setTimeout(resolve, 100)); try { const canvas = await html2canvas(ticketRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, useCORS: true }); const link = document.createElement("a"); link.href = canvas.toDataURL("image/png"); link.download = `Ticket-${ticketData.docNum}.png`; link.click(); } catch (e) { console.error(e); alert("Error imagen."); } };
   
-  // --- WHATSAPP CORREGIDO CON PRECIO UNITARIO ---
   const enviarWhatsApp = () => {
       if (!ticketData) return;
       let t = `🧾 *${ticketData.businessName}*\n`;
@@ -154,7 +218,6 @@ export default function POS() {
       t += `--------------------------------\n`;
       
       ticketData.items.forEach(i => { 
-          // CÁLCULO VISIBLE: P.UNIT x CANTIDAD = TOTAL
           const pu = i.price.toFixed(2);
           const tot = (i.price * i.quantity).toFixed(2);
           t += `▪️ ${i.quantity} ${i.unit || 'UNID'} x ${i.name}\n`;
@@ -175,24 +238,25 @@ export default function POS() {
               <div className="bg-white p-8 rounded-2xl w-full max-w-sm text-center shadow-xl">
                   <Store size={48} className="mx-auto text-blue-600 mb-4"/>
                   <h1 className="text-3xl font-black text-slate-800 mb-2">LIBRE-CAJA</h1>
-                  <p className="text-slate-500 mb-6 text-sm">Ingrese Clave de Acceso</p>
+                  <p className="text-slate-500 mb-6 text-sm">Ingrese su Licencia de Cliente</p>
                   <form onSubmit={intentarLogin} className="space-y-4">
-                      <input type="password" value={inputClaveTienda} onChange={(e)=>setInputClaveTienda(e.target.value)} className="w-full p-3 border rounded text-center text-lg uppercase tracking-widest focus:ring-2 ring-blue-500 outline-none" autoFocus placeholder="CLAVE"/>
+                      <input type="password" value={inputClaveTienda} onChange={(e)=>setInputClaveTienda(e.target.value)} className="w-full p-3 border rounded text-center text-lg uppercase tracking-widest focus:ring-2 ring-blue-500 outline-none" autoFocus placeholder="CÓDIGO DE LICENCIA"/>
                       {errorLogin && <p className="text-red-500 font-bold">{errorLogin}</p>}
-                      <button className="w-full bg-slate-900 text-white py-3 rounded font-bold flex justify-center gap-2 hover:bg-black"><Lock size={18}/> ENTRAR</button>
+                      <button className="w-full bg-slate-900 text-white py-3 rounded font-bold flex justify-center gap-2 hover:bg-black"><Lock size={18}/> INGRESAR</button>
                   </form>
+                  <p className="mt-8 text-xs text-gray-400">Software Protegido v3.0</p>
               </div>
           </div>
       );
   }
 
-  if (!productos || !categoriasDB || !vendedoresDB) return <div className="p-10 text-center">Cargando...</div>;
+  if (!productos || !categoriasDB || !vendedoresDB) return <div className="p-10 text-center">Cargando sistema...</div>;
   const productosFiltrados = categoriaSeleccionada === "Todos" ? productos : productos.filter(p => p.category === categoriaSeleccionada);
 
   return (
     <main className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
       
-      {/* TICKET DINÁMICO OCULTO */}
+      {/* TICKET OCULTO */}
       <div style={{ position: 'absolute', top: 0, left: 0, zIndex: -50, opacity: 0, pointerEvents: 'none' }}>
         {ticketData && (
             <div id="ticket-oculto" ref={ticketRef} style={{ width: '350px', padding: '20px', fontFamily: 'monospace', backgroundColor: '#ffffff', color: '#000000', border: '1px solid #000000' }}>
@@ -248,11 +312,11 @@ export default function POS() {
           </div>
       )}
 
-      {/* PANEL IZQUIERDO: CARRITO */}
+      {/* IZQUIERDA: CARRITO */}
       <section className="w-[35%] bg-white border-r flex flex-col shadow-2xl z-10">
         <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
              <h2 className="font-bold flex items-center gap-2"><ShoppingCart size={20}/> Venta</h2>
-             <button onClick={cerrarSesion} title="Salir"><LogOut size={20}/></button>
+             <button onClick={cerrarSesion} title="Salir" className="hover:text-red-400"><LogOut size={20}/></button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 bg-slate-50">
              {carrito.map((item, i) => (
@@ -280,12 +344,13 @@ export default function POS() {
         </div>
         <div className="p-4 bg-slate-100 border-t space-y-3">
              <div className="flex items-center gap-2 bg-white p-2 rounded border">
-                 <User size={20} className="text-gray-400"/>
+                 <UserIcon size={20} className="text-gray-400"/>
                  <select value={vendedorId} onChange={(e)=>setVendedorId(e.target.value)} className="w-full bg-transparent outline-none font-bold text-gray-700">
                      <option value="">-- Seleccionar Vendedor --</option>
                      {vendedoresDB.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
                  </select>
              </div>
+             {vendedoresDB.length === 0 && <p className="text-[10px] text-red-500 text-center">⚠️ Vaya a ADMIN para crear vendedores</p>}
              <div className="flex gap-2">
                  <button onClick={()=>setTipoDoc("BOLETA")} className={`flex-1 py-2 rounded font-bold text-sm border ${tipoDoc==="BOLETA"?"bg-blue-600 text-white":"bg-white"}`}>BOLETA</button>
                  <button onClick={()=>setTipoDoc("FACTURA")} className={`flex-1 py-2 rounded font-bold text-sm border ${tipoDoc==="FACTURA"?"bg-blue-600 text-white":"bg-white"}`}>FACTURA</button>
@@ -307,8 +372,8 @@ export default function POS() {
              <div className="flex justify-between items-center mb-4 mt-4">
                  <div>
                     <h1 className="text-xl font-bold text-slate-700 flex gap-2 items-center"><FileText size={20}/> Catálogo</h1>
-                    {/* AQUI SE MUESTRA EL NOMBRE QUE VIENE DE LA BD */}
-                    <p className="text-xs font-bold text-gray-400 uppercase">{negocioActual.name}</p>
+                    {/* MOSTRAMOS EL NOMBRE DEL NEGOCIO ACTIVO */}
+                    <p className="text-xs font-bold text-gray-400 uppercase">{configDB?.name || CLIENTES_AUTORIZADOS[licenciaActiva!]?.nombre}</p>
                  </div>
                  <div className="flex gap-2">
                      <button onClick={()=>irASeccionProtegida('/ventas')} className="bg-white border px-4 py-2 rounded-lg flex gap-2 text-sm font-bold shadow-sm hover:bg-gray-50"><ShoppingBag size={18}/> VENTAS</button>
