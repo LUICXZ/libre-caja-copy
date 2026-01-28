@@ -242,7 +242,7 @@ export default function POS() {
              </div>
          </div>
          
-         <div className="p-4 md:p-6 pt-0 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 content-start pb-20">
+         <div className="p-4 md:p-6 pt-0 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 content-start pb-20">
              {productosFiltrados.map((prod) => (
                  <button key={prod.id} onClick={()=>{ agregarAlCarrito(prod); /* Opcional: setVistaMovil("CARRITO") */ }} className={`bg-white p-3 rounded-xl shadow-sm border flex flex-col items-center justify-between h-36 md:h-40 relative group hover:shadow-lg transition active:scale-95 ${prod.stock!<=5?'border-red-300 bg-red-50':''}`}>
                      {prod.image ? <img src={prod.image} className="w-14 h-14 md:w-16 md:h-16 object-cover rounded-md group-hover:scale-105 transition"/> : <div className="text-3xl group-hover:scale-110 transition">📦</div>}
