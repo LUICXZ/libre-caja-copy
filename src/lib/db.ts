@@ -3,50 +3,52 @@ import Dexie, { Table } from 'dexie';
 // --- INTERFACES ---
 export interface Product { id?: number; name: string; price: number; category: string; unit: string; image?: string; stock: number; }
 export interface CartItem extends Product { quantity: number; }
-export interface Sale { id?: number; date: Date; total: number; items: CartItem[]; }
+
+// ACTUALIZADO: Ahora la venta guarda todo el detalle del dinero
+export interface Sale { 
+  id?: number; 
+  date: Date; 
+  total: number; // El total FINAL cobrado (después de descuento)
+  subtotal: number; // La suma original antes de descuento
+  discount: number; // Cuánto se descontó
+  payment: number; // Con cuánto pagó el cliente (Ej: 50 soles)
+  change: number; // El vuelto (Ej: 2.50)
+  items: CartItem[]; 
+}
+
 export interface Category { id?: number; name: string; }
 export interface Unit { id?: number; name: string; }
 export interface BusinessConfig { id?: number; name: string; ruc: string; address: string; phone: string; }
+export interface User { id?: number; name: string; pin: string; role: "ADMIN" | "VENDEDOR"; }
 
-// --- NUEVA INTERFAZ (ESTO ES LO QUE FALTABA) ---
-export interface User {
-  id?: number;
-  name: string;
-  pin: string;      
-  role: "ADMIN" | "VENDEDOR"; 
+// NUEVO: Tabla para guardar la Caja Inicial del día
+export interface DailyCash { 
+  id?: number; 
+  dateStr: string; // Ej: "28/01/2026" (Para identificar el día)
+  initialAmount: number; // Monto de apertura
 }
-
-// (Mantenemos Seller para compatibilidad si quedaron datos viejos, pero ya no lo usaremos activamente)
-export interface Seller { id?: number; name: string; }
 
 class PosDatabase extends Dexie {
   products!: Table<Product>;
   sales!: Table<Sale>;
   categories!: Table<Category>;
-  sellers!: Table<Seller>; // Lo dejamos por seguridad de datos viejos
   units!: Table<Unit>;
   config!: Table<BusinessConfig>;
-  users!: Table<User>; // --- ESTO FALTABA ---
+  users!: Table<User>;
+  dailyCash!: Table<DailyCash>; // --- NUEVA TABLA ---
 
   constructor() {
     super('PosCaneteDB'); 
     
-    // Historial de versiones
-    this.version(1).stores({ products: '++id, name, category, stock', sales: '++id, date' });
-    this.version(2).stores({ products: '++id, name, category, stock', sales: '++id, date', categories: '++id, name', sellers: '++id, name' });
-    this.version(3).stores({ products: '++id, name, category, stock, unit', sales: '++id, date', categories: '++id, name', sellers: '++id, name' });
-    this.version(4).stores({ products: '++id, name, category, stock, unit', sales: '++id, date', categories: '++id, name', sellers: '++id, name', units: '++id, name' });
-    this.version(5).stores({ products: '++id, name, category, stock, unit', sales: '++id, date', categories: '++id, name', sellers: '++id, name', units: '++id, name', config: '++id' });
-
-    // VERSIÓN 6: Agregamos users
-    this.version(6).stores({
+    // VERSIÓN 7: Actualizamos Ventas y agregamos Caja Diaria
+    this.version(7).stores({
       products: '++id, name, category, stock, unit', 
-      sales: '++id, date',
+      sales: '++id, date', // Dexie permite agregar campos a los objetos sin cambiar el esquema si no son índices
       categories: '++id, name',
       units: '++id, name',
       config: '++id',
-      users: '++id, pin', // Indexamos por PIN
-      sellers: '++id, name' // Mantenemos la tabla vieja por si acaso
+      users: '++id, pin',
+      dailyCash: '++id, dateStr' // Indexamos por fecha texto
     });
   }
 }

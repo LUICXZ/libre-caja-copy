@@ -7,12 +7,14 @@ import { Trash2, Edit, Save, ArrowLeft, PackagePlus, Download, Upload, Image as 
 import Link from "next/link";
 
 export default function AdminProductos() {
+  // --- CARGA DE DATOS ---
   const productos = useLiveQuery(() => db.products.toArray());
   const categoriasDB = useLiveQuery(() => db.categories.toArray());
   const unidadesDB = useLiveQuery(() => db.units.toArray());
   const usuariosDB = useLiveQuery(() => db.users.toArray());
   const configDB = useLiveQuery(() => db.config.get(1)); 
 
+  // --- ESTADOS ---
   const [nombre, setNombre] = useState("");
   const [precio, setPrecio] = useState("");
   const [stock, setStock] = useState("");
@@ -21,6 +23,7 @@ export default function AdminProductos() {
   const [imagen, setImagen] = useState(""); 
   const [idEditando, setIdEditando] = useState<number | null>(null);
 
+  // --- ESTADOS DE GESTIÓN ---
   const [nuevaCategoria, setNuevaCategoria] = useState("");
   const [nuevaUnidad, setNuevaUnidad] = useState("");
   const [nuevoUser, setNuevoUser] = useState({ name: "", pin: "", role: "VENDEDOR" });
@@ -33,6 +36,47 @@ export default function AdminProductos() {
   const imgInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- LÓGICA DE BACKUP (RECUPERADA) ---
+  const exportarDatos = async () => {
+    const backup = {
+      fecha: new Date().toISOString(),
+      productos: await db.products.toArray(),
+      ventas: await db.sales.toArray(),
+      categorias: await db.categories.toArray(),
+      unidades: await db.units.toArray(),
+      usuarios: await db.users.toArray(),
+      config: await db.config.toArray()
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Backup_POS_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+    link.click();
+  };
+
+  const importarDatos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!confirm("⚠️ Se combinarán los datos. ¿Seguir?")) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const json = JSON.parse(event.target?.result as string);
+            if (json.productos) await db.products.bulkPut(json.productos);
+            if (json.ventas) await db.sales.bulkPut(json.ventas);
+            if (json.categorias) await db.categories.bulkPut(json.categorias);
+            if (json.unidades) await db.units.bulkPut(json.unidades);
+            if (json.usuarios) await db.users.bulkPut(json.usuarios);
+            if (json.config) await db.config.bulkPut(json.config);
+            alert("✅ Restaurado con éxito.");
+            window.location.reload();
+        } catch (error) { alert("❌ Archivo inválido."); }
+    };
+    reader.readAsText(file);
+  };
+
+  // --- FUNCIONES GESTIÓN ---
   const agregarUsuario = async () => {
       if (!nuevoUser.name || !nuevoUser.pin) return alert("Falta nombre o PIN");
       await db.users.add({ 
@@ -42,10 +86,7 @@ export default function AdminProductos() {
       });
       setNuevoUser({ name: "", pin: "", role: "VENDEDOR" });
   };
-  const borrarUsuario = async (id: number) => { 
-      if (confirm("¿Borrar usuario?")) await db.users.delete(id); 
-  };
-
+  const borrarUsuario = async (id: number) => { if (confirm("¿Borrar usuario?")) await db.users.delete(id); };
   const guardarEmpresa = async () => { await db.config.put({ id: 1, ...empresa }); alert("✅ Datos actualizados"); };
   const procesarImagen = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => { setImagen(reader.result as string); }; reader.readAsDataURL(file); } };
   const agregarCategoria = async () => { if (!nuevaCategoria) return; await db.categories.add({ name: nuevaCategoria.toUpperCase() }); setNuevaCategoria(""); };
@@ -61,18 +102,26 @@ export default function AdminProductos() {
   const limpiarForm = () => { setNombre(""); setPrecio(""); setStock(""); setImagen(""); setIdEditando(null); setUnidad(""); };
   const cargarParaEditar = (prod: Product) => { setNombre(prod.name); setPrecio(prod.price.toString()); setStock(prod.stock.toString()); setCategoria(prod.category); setUnidad(prod.unit); setImagen(prod.image||""); setIdEditando(prod.id!); };
   const borrarProducto = async (id: number) => { if (confirm("¿Borrar?")) await db.products.delete(id); };
-  const exportarDatos = async () => { /* logica backup igual */ };
-  const importarDatos = async (e: React.ChangeEvent<HTMLInputElement>) => { /* logica import igual */ };
 
   if (!productos || !categoriasDB || !usuariosDB || !unidadesDB) return <div className="p-10 text-center">Cargando...</div>;
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 font-sans pb-20">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4"><Link href="/" className="bg-slate-800 text-white p-3 rounded-full hover:bg-black"><ArrowLeft /></Link><h1 className="text-3xl font-bold text-slate-800">Administrador</h1></div>
+      {/* CABECERA CON BOTONES BACKUP */}
+      <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+            <Link href="/" className="bg-slate-800 text-white p-3 rounded-full hover:bg-black transition shadow-lg"><ArrowLeft /></Link>
+            <h1 className="text-3xl font-bold text-slate-800">Administrador</h1>
+        </div>
+        <div className="flex gap-2">
+            <button onClick={exportarDatos} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition"><Download size={18}/> BACKUP</button>
+            <button onClick={() => fileInputRef.current?.click()} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition"><Upload size={18}/> RESTAURAR</button>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={importarDatos}/>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* COLUMNA 1: CONFIGURACIÓN */}
         <div className="space-y-6">
             <div className="bg-slate-800 p-5 rounded-xl shadow-lg text-white">
                 <h3 className="font-bold flex items-center gap-2 mb-4 text-emerald-400"><Building2 size={20}/> Datos del Negocio</h3>
@@ -119,6 +168,7 @@ export default function AdminProductos() {
             </div>
         </div>
 
+        {/* COLUMNA 2 Y 3: PRODUCTOS */}
         <div className="lg:col-span-2 space-y-6">
              <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
                 <h2 className="text-xl font-bold mb-4 flex gap-2 items-center text-blue-600">{idEditando ? <Edit size={20}/> : <PackagePlus size={20}/>} {idEditando ? "Editar Producto" : "Nuevo Producto"}</h2>
