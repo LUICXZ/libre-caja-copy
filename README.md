@@ -1,6 +1,7 @@
 ### 2. Para el Proyecto "Libre-Caja" (Sistema POS)
 Aquí el foco es la estabilidad, el funcionamiento offline y la integración con hardware (tablets) y servicios críticos (SUNAT).
-
+CLAVE DEMO: 2026
+ACCESO USUARIO: 1234
 **Nombre del archivo:** `README.md` (en el repo `sistema-pos-rimora`)
 
 ```markdown
