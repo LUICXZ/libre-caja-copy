@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+### 2. Para el Proyecto "Libre-Caja" (Sistema POS)
+Aquí el foco es la estabilidad, el funcionamiento offline y la integración con hardware (tablets) y servicios críticos (SUNAT).
 
-## Getting Started
+**Nombre del archivo:** `README.md` (en el repo `sistema-pos-rimora`)
 
-First, run the development server:
+```markdown
+# 🛒 Rimora POS System (Punto de Venta)
+
+![Platform](https://img.shields.io/badge/Platform-Tablet%20%7C%20Web-orange)
+![Mode](https://img.shields.io/badge/Mode-Offline%20First-green)
+![Compliance](https://img.shields.io/badge/Compliance-SUNAT-red)
+
+> **Sistema de control administrativo y facturación** desarrollado para tablets, enfocado en la agilidad del punto de venta y la operación sin dependencia constante de internet.
+
+## 🎯 El Problema y la Solución
+**RIMORA S.A.C.** necesitaba un sistema ligero pero potente para reemplazar procesos manuales. Este software permite la emisión rápida de comprobantes y el control de inventario en tiempo real.
+
+## 📦 Funcionalidades Principales
+- **📡 Arquitectura Offline-First:** Uso de bases de datos locales para garantizar la venta incluso sin internet.
+- **🧾 Facturación Electrónica:** Módulo de integración con la API de **SUNAT** para emisión de Boletas y Facturas.
+- **ipad Optimización Táctil:** Interfaz diseñada específicamente para experiencia de usuario en tablets.
+- **📦 Control de Stock:** Sincronización inteligente de inventario y alertas de bajo stock.
+
+## 💻 Tecnologías
+- **Core:** React (Vite)
+- **Lenguaje:** TypeScript
+- **Persistencia Local:** IndexedDB / LocalStorage
+- **Estilos:** CSS Modules + Tailwind CSS
+- **Integraciones:** API REST Facturación
+
+## ⚙️ Despliegue
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+# Instalación de dependencias
+npm install
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Compilación para producción
+npm run build
